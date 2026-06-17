@@ -15,23 +15,20 @@ module.exports = async function handler(req, res) {
   }
 
   if (req.method === 'POST' && req.query.action === 'seen') {
-    const raw = await kv.get('latest_call');
-    if (raw) {
-      const payload = JSON.parse(raw);
+    const payload = await kv.get('latest_call');
+    if (payload) {
       payload.seen = true;
-      await kv.set('latest_call', JSON.stringify(payload), { ex: 300 });
+      await kv.set('latest_call', payload, { ex: 300 });
     }
     return res.status(200).json({ ok: true });
   }
 
   if (req.method === 'GET') {
-    const raw = await kv.get('latest_call');
+    const payload = await kv.get('latest_call');
 
-    if (!raw) {
+    if (!payload) {
       return res.status(200).json({ hasCall: false });
     }
-
-    const payload = JSON.parse(raw);
 
     if (payload.seen) {
       return res.status(200).json({ hasCall: false });

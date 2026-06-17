@@ -32,7 +32,7 @@ module.exports = async function handler(req, res) {
     seen: false,
   };
 
-  await kv.set('latest_call', JSON.stringify(payload), { ex: 300 });
+  await kv.set('latest_call', payload, { ex: 300 });
 
   return res.status(200).json({ ok: true });
 };
