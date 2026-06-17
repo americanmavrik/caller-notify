@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Caller Notify</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f0f0f;
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #status {
+      color: #555;
+      font-size: 14px;
+      text-align: center;
+      user-select: none;
+    }
+
+    #status .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background: #2ecc71;
+      border-radius: 50%;
+      margin-right: 8px;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* Popup overlay */
+    #overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #overlay.visible {
+      display: flex;
+    }
+
+    #popup {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 16px;
+      padding: 32px;
+      width: 380px;
+      max-width: 90vw;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.8);
+      animation: slideIn 0.25s ease;
+    }
+
+    @keyframes slideIn {
+      from { transform: translateY(-20px); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+
+    #popup .label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: #e74c3c;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #popup .label::before {
+      content: '';
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background: #e74c3c;
+      border-radius: 50%;
+      animation: pulse 1s infinite;
+    }
+
+    #popup .name {
+      font-size: 26px;
+      font-weight: 700;
+      margin-bottom: 6px;
+      color: #fff;
+    }
+
+    #popup .phone {
+      font-size: 20px;
+      color: #aaa;
+      margin-bottom: 20px;
+      letter-spacing: 0.5px;
+    }
+
+    #popup .notes {
+      font-size: 14px;
+      color: #888;
+      background: #111;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 20px;
+      line-height: 1.5;
+      display: none;
+    }
+
+    #popup .notes.visible {
+      display: block;
+    }
+
+    #popup .actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    #popup button {
+      flex: 1;
+      padding: 12px;
+      border-radius: 10px;
+      border: none;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    #popup button:hover { opacity: 0.85; }
+
+    #btn-dismiss {
+      background: #2ecc71;
+      color: #000;
+    }
+
+    #btn-jobber {
+      background: #1e3a5f;
+      color: #fff;
+      display: none;
+    }
+
+    #btn-jobber.visible {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="status">
+    <span class="dot"></span>Listening for incoming calls…
+  </div>
+
+  <div id="overlay">
+    <div id="popup">
+      <div class="label">Incoming Call</div>
+      <div class="name" id="caller-name"></div>
+      <div class="phone" id="caller-phone"></div>
+      <div class="notes" id="caller-notes"></div>
+      <div class="actions">
+        <button id="btn-dismiss" onclick="dismiss()">Got it</button>
+        <button id="btn-jobber" onclick="openJobber()">View in Jobber</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const POLL_URL = '/api/poll';
+    let jobberUrl = null;
+
+    async function poll() {
+      try {
+        const res = await fetch(POLL_URL);
+        const data = await res.json();
+        if (data.hasCall) showPopup(data.call);
+      } catch (e) {
+        // silently ignore network blips
+      }
+    }
+
+    function showPopup(call) {
+      jobberUrl = call.jobberUrl || null;
+
+      document.getElementById('caller-name').textContent = call.clientName || 'Unknown Caller';
+      document.getElementById('caller-phone').textContent = call.phone;
+
+      const notesEl = document.getElementById('caller-notes');
+      if (call.notes) {
+        notesEl.textContent = call.notes;
+        notesEl.classList.add('visible');
+      } else {
+        notesEl.classList.remove('visible');
+      }
+
+      const jobberBtn = document.getElementById('btn-jobber');
+      if (jobberUrl) {
+        jobberBtn.classList.add('visible');
+      } else {
+        jobberBtn.classList.remove('visible');
+      }
+
+      document.getElementById('overlay').classList.add('visible');
+    }
+
+    async function dismiss() {
+      document.getElementById('overlay').classList.remove('visible');
+      await fetch(POLL_URL + '?action=seen', { method: 'POST' });
+    }
+
+    function openJobber() {
+      if (jobberUrl) window.open(jobberUrl, '_blank');
+      dismiss();
+    }
+
+    poll();
+    setInterval(poll, 3000);
+  </script>
+
+</body>
+</html>
