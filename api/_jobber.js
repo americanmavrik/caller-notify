@@ -46,17 +46,6 @@ async function getAccessToken() {
   return data.access_token;
 }
 
-function decodeJobberClientUrl(globalId) {
-  try {
-    // globalId is base64 "gid://Jobber/Client/123456"
-    const decoded = Buffer.from(globalId, 'base64').toString('utf-8');
-    const numericId = decoded.split('/').pop();
-    return `https://secure.getjobber.com/clients/${numericId}`;
-  } catch {
-    return null;
-  }
-}
-
 function normalizeDigits(phone) {
   const digits = phone.replace(/\D/g, '');
   // For North American numbers strip country code to get 10 digits
@@ -75,11 +64,11 @@ async function findClientByPhone(phone) {
       query FindClient($q: String!) {
         clients(filter: { q: $q }) {
           nodes {
-            id
             name
             companyName
-            phoneNumbers { number }
-            notes { body }
+            jobberWebUri
+            phones { number }
+            notes { nodes { body } }
           }
         }
       }
@@ -102,18 +91,16 @@ async function findClientByPhone(phone) {
     const nodes = data?.clients?.nodes || [];
 
     for (const client of nodes) {
-      const phones = client.phoneNumbers || [];
+      const phones = client.phones || [];
       const matches = phones.some(p => normalizeDigits(p.number) === searchTerm);
       if (!matches) continue;
 
-      // Take the most recent note (first in array, assuming descending order)
-      const notes = (client.notes || []).map(n => n.body).filter(Boolean);
-      const latestNote = notes[0] || '';
+      const notes = (client.notes?.nodes || []).map(n => n.body).filter(Boolean);
 
       return {
         name: client.name || client.companyName || null,
-        notes: latestNote,
-        jobberUrl: decodeJobberClientUrl(client.id),
+        notes: notes[0] || '',
+        jobberUrl: client.jobberWebUri || null,
       };
     }
 
