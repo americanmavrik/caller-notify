@@ -50,74 +50,12 @@ function normalizeDigits(phone) {
   return digits.length === 11 && digits[0] === '1' ? digits.slice(1) : digits;
 }
 
-async function gqlRequest(accessToken, query, variables) {
-  const res = await fetch(JOBBER_GRAPHQL_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`,
-      'X-JOBBER-GRAPHQL-VERSION': JOBBER_API_VERSION,
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-  if (!res.ok) return null;
-  const json = await res.json();
-  if (json.errors?.length) return null;
-  return json.data;
-}
-
-// ClientFilterAttributes has no phone/text search — paginate all clients and match locally.
-// For a small business this is typically 1–5 pages (50/page).
+// O(1) lookup — cache is built by /api/jobber-sync (run once, then nightly via cron)
 async function findClientByPhone(phone) {
   try {
-    const accessToken = await getAccessToken();
-    if (!accessToken) return null;
-
     const digits = normalizeDigits(phone);
     if (digits.length < 7) return null;
-
-    const query = `
-      query ListClients($after: String) {
-        clients(first: 50, after: $after) {
-          nodes {
-            name
-            companyName
-            jobberWebUri
-            phones { number }
-            notes { nodes { message } }
-          }
-          pageInfo { hasNextPage endCursor }
-        }
-      }
-    `;
-
-    let after = null;
-    let pages = 0;
-
-    do {
-      const data = await gqlRequest(accessToken, query, { after });
-      if (!data) break;
-
-      const { nodes, pageInfo } = data.clients;
-
-      for (const client of nodes) {
-        const phones = client.phones || [];
-        const matches = phones.some(p => normalizeDigits(p.number) === digits);
-        if (!matches) continue;
-
-        const notes = (client.notes?.nodes || []).map(n => n.message).filter(Boolean);
-        return {
-          name: client.name || client.companyName || null,
-          notes: notes[0] || '',
-          jobberUrl: client.jobberWebUri || null,
-        };
-      }
-
-      after = pageInfo.hasNextPage ? pageInfo.endCursor : null;
-      pages++;
-    } while (after && pages < 20);
-
-    return null;
+    return await kv.get(`jc:${digits}`);
   } catch {
     return null;
   }
