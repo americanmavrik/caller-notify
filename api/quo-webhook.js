@@ -8,33 +8,32 @@ const kv = createClient({
 const QUO_API_KEY = process.env.QUO_API_KEY;
 const QUO_API_BASE = 'https://api.openphone.com/v1';
 
-async function getContactNameByPhone(phone) {
+async function findContactByPhone(phone) {
   try {
-    const url = `${QUO_API_BASE}/contacts?phoneNumbers[]=${encodeURIComponent(phone)}&maxResults=1`;
-    const res = await fetch(url, { headers: { Authorization: QUO_API_KEY } });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const contact = data.data?.[0];
-    if (!contact) return null;
-    const fields = contact.defaultFields;
-    const name = [fields.firstName, fields.lastName].filter(Boolean).join(' ');
-    return name || null;
-  } catch (e) {
-    return null;
-  }
-}
+    let pageToken = null;
+    let pages = 0;
+    do {
+      const url = new URL(`${QUO_API_BASE}/contacts`);
+      url.searchParams.set('maxResults', '50');
+      if (pageToken) url.searchParams.set('pageToken', pageToken);
 
-async function getContactNameById(contactId) {
-  try {
-    const res = await fetch(`${QUO_API_BASE}/contacts/${contactId}`, {
-      headers: { Authorization: QUO_API_KEY },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const fields = data.data?.defaultFields;
-    if (!fields) return null;
-    const name = [fields.firstName, fields.lastName].filter(Boolean).join(' ');
-    return name || null;
+      const res = await fetch(url.toString(), { headers: { Authorization: QUO_API_KEY } });
+      if (!res.ok) break;
+      const data = await res.json();
+
+      for (const contact of data.data || []) {
+        const phones = contact.defaultFields?.phoneNumbers || [];
+        if (phones.some(p => p.value === phone)) {
+          const { firstName, lastName } = contact.defaultFields;
+          return [firstName, lastName].filter(Boolean).join(' ') || null;
+        }
+      }
+
+      pageToken = data.nextPageToken;
+      pages++;
+    } while (pageToken && pages < 20);
+
+    return null;
   } catch (e) {
     return null;
   }
@@ -59,13 +58,8 @@ module.exports = async function handler(req, res) {
   const phone = call.participants?.[0] || 'Unknown number';
 
   let clientName = 'Unknown Caller';
-  if (QUO_API_KEY) {
-    if (call.contactIds?.length > 0) {
-      clientName = (await getContactNameById(call.contactIds[0])) || clientName;
-    }
-    if (clientName === 'Unknown Caller' && phone !== 'Unknown number') {
-      clientName = (await getContactNameByPhone(phone)) || clientName;
-    }
+  if (QUO_API_KEY && phone !== 'Unknown number') {
+    clientName = (await findContactByPhone(phone)) || 'Unknown Caller';
   }
 
   const payload = {
