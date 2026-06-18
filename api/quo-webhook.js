@@ -56,7 +56,7 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ ok: true, skipped: true });
   }
 
-  const phone = call.participants?.[0] || 'Unknown number';
+  const phone = call.from || 'Unknown number';
 
   let clientName = 'Unknown Caller';
   if (QUO_API_KEY && phone !== 'Unknown number') {
