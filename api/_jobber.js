@@ -16,7 +16,6 @@ async function getAccessToken() {
     kv.get('jobber_refresh_token'),
   ]);
 
-  // Return cached token if still valid (with 60s buffer)
   if (token && expiresAt && Date.now() < Number(expiresAt) - 60000) {
     return token;
   }
@@ -51,11 +50,24 @@ function normalizeDigits(phone) {
   return digits.length === 11 && digits[0] === '1' ? digits.slice(1) : digits;
 }
 
-// Format 10-digit number as (NXX) NXX-XXXX — the most common US format in business software
-function formatPhone(digits10) {
-  return `(${digits10.slice(0, 3)}) ${digits10.slice(3, 6)}-${digits10.slice(6)}`;
+async function gqlRequest(accessToken, query, variables) {
+  const res = await fetch(JOBBER_GRAPHQL_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
+      'X-JOBBER-GRAPHQL-VERSION': JOBBER_API_VERSION,
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+  if (!res.ok) return null;
+  const json = await res.json();
+  if (json.errors?.length) return null;
+  return json.data;
 }
 
+// ClientFilterAttributes has no phone/text search — paginate all clients and match locally.
+// For a small business this is typically 1–5 pages (50/page).
 async function findClientByPhone(phone) {
   try {
     const accessToken = await getAccessToken();
@@ -64,15 +76,9 @@ async function findClientByPhone(phone) {
     const digits = normalizeDigits(phone);
     if (digits.length < 7) return null;
 
-    // Search with formatted number first (matches how Jobber typically stores US numbers),
-    // then fall back to raw digits in case Jobber stores them unformatted.
-    const searchTerms = digits.length === 10
-      ? [formatPhone(digits), digits]
-      : [digits];
-
     const query = `
-      query FindClient($q: String!) {
-        clients(filter: { q: $q }) {
+      query ListClients($after: String) {
+        clients(first: 50, after: $after) {
           nodes {
             name
             companyName
@@ -80,26 +86,19 @@ async function findClientByPhone(phone) {
             phones { number }
             notes { nodes { message } }
           }
+          pageInfo { hasNextPage endCursor }
         }
       }
     `;
 
-    for (const q of searchTerms) {
-      const res = await fetch(JOBBER_GRAPHQL_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-          'X-JOBBER-GRAPHQL-VERSION': JOBBER_API_VERSION,
-        },
-        body: JSON.stringify({ query, variables: { q } }),
-      });
+    let after = null;
+    let pages = 0;
 
-      if (!res.ok) continue;
-      const { data, errors } = await res.json();
-      if (errors?.length) continue;
+    do {
+      const data = await gqlRequest(accessToken, query, { after });
+      if (!data) break;
 
-      const nodes = data?.clients?.nodes || [];
+      const { nodes, pageInfo } = data.clients;
 
       for (const client of nodes) {
         const phones = client.phones || [];
@@ -113,7 +112,10 @@ async function findClientByPhone(phone) {
           jobberUrl: client.jobberWebUri || null,
         };
       }
-    }
+
+      after = pageInfo.hasNextPage ? pageInfo.endCursor : null;
+      pages++;
+    } while (after && pages < 20);
 
     return null;
   } catch {
