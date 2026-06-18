@@ -51,6 +51,7 @@ module.exports = async function handler(req, res) {
   }
 
   const call = data?.object;
+  console.log('RAW PAYLOAD:', JSON.stringify(req.body));
   if (!call || call.direction !== 'incoming') {
     return res.status(200).json({ ok: true, skipped: true });
   }
