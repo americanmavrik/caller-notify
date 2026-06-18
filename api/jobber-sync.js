@@ -15,7 +15,8 @@ function normalizeDigits(phone) {
 }
 
 module.exports = async function handler(req, res) {
-  const manualAuth = req.headers['x-notify-secret'] === process.env.NOTIFY_SECRET;
+  const manualAuth = req.headers['x-notify-secret'] === process.env.NOTIFY_SECRET
+    || req.query.secret === process.env.NOTIFY_SECRET;
   const cronAuth = req.headers['authorization'] === `Bearer ${process.env.CRON_SECRET}`;
   if (!manualAuth && !cronAuth) {
     return res.status(401).json({ error: 'Unauthorized' });
