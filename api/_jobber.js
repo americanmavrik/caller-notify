@@ -48,8 +48,12 @@ async function getAccessToken() {
 
 function normalizeDigits(phone) {
   const digits = phone.replace(/\D/g, '');
-  // For North American numbers strip country code to get 10 digits
   return digits.length === 11 && digits[0] === '1' ? digits.slice(1) : digits;
+}
+
+// Format 10-digit number as (NXX) NXX-XXXX — the most common US format in business software
+function formatPhone(digits10) {
+  return `(${digits10.slice(0, 3)}) ${digits10.slice(3, 6)}-${digits10.slice(6)}`;
 }
 
 async function findClientByPhone(phone) {
@@ -57,8 +61,14 @@ async function findClientByPhone(phone) {
     const accessToken = await getAccessToken();
     if (!accessToken) return null;
 
-    const searchTerm = normalizeDigits(phone);
-    if (searchTerm.length < 7) return null;
+    const digits = normalizeDigits(phone);
+    if (digits.length < 7) return null;
+
+    // Search with formatted number first (matches how Jobber typically stores US numbers),
+    // then fall back to raw digits in case Jobber stores them unformatted.
+    const searchTerms = digits.length === 10
+      ? [formatPhone(digits), digits]
+      : [digits];
 
     const query = `
       query FindClient($q: String!) {
@@ -74,34 +84,35 @@ async function findClientByPhone(phone) {
       }
     `;
 
-    const res = await fetch(JOBBER_GRAPHQL_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
-        'X-JOBBER-GRAPHQL-VERSION': JOBBER_API_VERSION,
-      },
-      body: JSON.stringify({ query, variables: { q: searchTerm } }),
-    });
+    for (const q of searchTerms) {
+      const res = await fetch(JOBBER_GRAPHQL_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'X-JOBBER-GRAPHQL-VERSION': JOBBER_API_VERSION,
+        },
+        body: JSON.stringify({ query, variables: { q } }),
+      });
 
-    if (!res.ok) return null;
-    const { data, errors } = await res.json();
-    if (errors?.length) return null;
+      if (!res.ok) continue;
+      const { data, errors } = await res.json();
+      if (errors?.length) continue;
 
-    const nodes = data?.clients?.nodes || [];
+      const nodes = data?.clients?.nodes || [];
 
-    for (const client of nodes) {
-      const phones = client.phones || [];
-      const matches = phones.some(p => normalizeDigits(p.number) === searchTerm);
-      if (!matches) continue;
+      for (const client of nodes) {
+        const phones = client.phones || [];
+        const matches = phones.some(p => normalizeDigits(p.number) === digits);
+        if (!matches) continue;
 
-      const notes = (client.notes?.nodes || []).map(n => n.message).filter(Boolean);
-
-      return {
-        name: client.name || client.companyName || null,
-        notes: notes[0] || '',
-        jobberUrl: client.jobberWebUri || null,
-      };
+        const notes = (client.notes?.nodes || []).map(n => n.message).filter(Boolean);
+        return {
+          name: client.name || client.companyName || null,
+          notes: notes[0] || '',
+          jobberUrl: client.jobberWebUri || null,
+        };
+      }
     }
 
     return null;
