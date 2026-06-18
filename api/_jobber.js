@@ -7,7 +7,7 @@ const kv = createClient({
 
 const JOBBER_TOKEN_URL = 'https://api.getjobber.com/api/oauth/token';
 const JOBBER_GRAPHQL_URL = 'https://api.getjobber.com/api/graphql';
-const JOBBER_API_VERSION = '2024-10-07';
+const JOBBER_API_VERSION = '2025-04-16';
 
 async function getAccessToken() {
   const [token, expiresAt, refreshToken] = await Promise.all([
@@ -68,7 +68,7 @@ async function findClientByPhone(phone) {
             companyName
             jobberWebUri
             phones { number }
-            notes { nodes { body } }
+            notes { nodes { message } }
           }
         }
       }
@@ -95,7 +95,7 @@ async function findClientByPhone(phone) {
       const matches = phones.some(p => normalizeDigits(p.number) === searchTerm);
       if (!matches) continue;
 
-      const notes = (client.notes?.nodes || []).map(n => n.body).filter(Boolean);
+      const notes = (client.notes?.nodes || []).map(n => n.message).filter(Boolean);
 
       return {
         name: client.name || client.companyName || null,
