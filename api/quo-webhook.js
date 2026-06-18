@@ -1,4 +1,5 @@
 const { createClient } = require('@vercel/kv');
+const { findClientByPhone: findJobberClient } = require('./_jobber');
 
 const kv = createClient({
   url: process.env.KV_REST_API_URL,
@@ -62,11 +63,23 @@ module.exports = async function handler(req, res) {
     clientName = (await findContactByPhone(phone)) || 'Unknown Caller';
   }
 
+  // Look up Jobber client for notes and direct link
+  let notes = '';
+  let jobberUrl = null;
+  if (phone !== 'Unknown number') {
+    const jobber = await findJobberClient(phone);
+    if (jobber) {
+      if (jobber.name && clientName === 'Unknown Caller') clientName = jobber.name;
+      notes = jobber.notes || '';
+      jobberUrl = jobber.jobberUrl || null;
+    }
+  }
+
   const payload = {
     clientName,
     phone,
-    notes: '',
-    jobberUrl: null,
+    notes,
+    jobberUrl,
     timestamp: Date.now(),
     seen: false,
   };
