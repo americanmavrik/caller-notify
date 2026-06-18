@@ -41,11 +41,15 @@ module.exports = async function handler(req, res) {
   }
 
   const phone = call.participants?.[0] || 'Unknown number';
+  console.log('quo-webhook call:', JSON.stringify({ phone, contactIds: call.contactIds, participants: call.participants }));
 
   let clientName = 'Unknown Caller';
   if (QUO_API_KEY && call.contactIds?.length > 0) {
     const name = await getContactName(call.contactIds[0]);
+    console.log('contact lookup result:', name);
     if (name) clientName = name;
+  } else {
+    console.log('no contactIds or no API key, QUO_API_KEY set:', !!QUO_API_KEY);
   }
 
   const payload = {
