@@ -58,9 +58,13 @@ module.exports = async function handler(req, res) {
 
   const phone = call.from || 'Unknown number';
 
-  let clientName = 'Unknown Caller';
+  // Only notify for saved Quo contacts — skip unknown callers entirely
+  let clientName = null;
   if (QUO_API_KEY && phone !== 'Unknown number') {
-    clientName = (await findContactByPhone(phone)) || 'Unknown Caller';
+    clientName = await findContactByPhone(phone);
+  }
+  if (!clientName) {
+    return res.status(200).json({ ok: true, skipped: true });
   }
 
   // Look up Jobber client for notes and direct link
@@ -69,7 +73,6 @@ module.exports = async function handler(req, res) {
   if (phone !== 'Unknown number') {
     const jobber = await findJobberClient(phone);
     if (jobber) {
-      if (jobber.name && clientName === 'Unknown Caller') clientName = jobber.name;
       notes = jobber.notes || '';
       jobberUrl = jobber.jobberUrl || null;
     }
