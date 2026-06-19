@@ -14,23 +14,11 @@ module.exports = async function handler(req, res) {
     return res.status(200).end();
   }
 
-  if (req.method === 'POST' && req.query.action === 'seen') {
-    const payload = await kv.get('latest_call');
-    if (payload) {
-      payload.seen = true;
-      await kv.set('latest_call', payload, { ex: 300 });
-    }
-    return res.status(200).json({ ok: true });
-  }
-
   if (req.method === 'GET') {
+    res.setHeader('Cache-Control', 'no-store');
     const payload = await kv.get('latest_call');
 
     if (!payload) {
-      return res.status(200).json({ hasCall: false });
-    }
-
-    if (payload.seen) {
       return res.status(200).json({ hasCall: false });
     }
 

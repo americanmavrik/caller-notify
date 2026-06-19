@@ -177,12 +177,14 @@
   <script>
     const POLL_URL = '/api/poll';
     let jobberUrl = null;
+    let lastSeenTimestamp = parseInt(localStorage.getItem('lastSeenTimestamp') || '0');
+    let currentCallTimestamp = 0;
 
     async function poll() {
       try {
-        const res = await fetch(POLL_URL);
+        const res = await fetch(POLL_URL, { cache: 'no-store' });
         const data = await res.json();
-        if (data.hasCall) showPopup(data.call);
+        if (data.hasCall && data.call.timestamp > lastSeenTimestamp) showPopup(data.call);
       } catch (e) {
         // silently ignore network blips
       }
@@ -190,6 +192,7 @@
 
     function showPopup(call) {
       jobberUrl = call.jobberUrl || null;
+      currentCallTimestamp = call.timestamp;
 
       document.getElementById('caller-name').textContent = call.clientName || 'Unknown Caller';
       document.getElementById('caller-phone').textContent = call.phone;
@@ -212,9 +215,10 @@
       document.getElementById('overlay').classList.add('visible');
     }
 
-    async function dismiss() {
+    function dismiss() {
       document.getElementById('overlay').classList.remove('visible');
-      await fetch(POLL_URL + '?action=seen', { method: 'POST' });
+      lastSeenTimestamp = currentCallTimestamp;
+      localStorage.setItem('lastSeenTimestamp', lastSeenTimestamp);
     }
 
     function openJobber() {
